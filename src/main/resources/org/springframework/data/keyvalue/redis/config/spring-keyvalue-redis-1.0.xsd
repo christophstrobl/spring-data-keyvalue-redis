@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<xsd:schema xmlns="http://www.springframework.org/schema/data/keyvalue/redis"
+            xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            xmlns:tool="http://www.springframework.org/schema/tool"
+            xmlns:repository="http://www.springframework.org/schema/data/repository"
+            targetNamespace="http://www.springframework.org/schema/data/keyvalue/redis"
+            elementFormDefault="qualified" attributeFormDefault="unqualified">
+
+    <xsd:import namespace="http://www.springframework.org/schema/beans"/>
+    <xsd:import namespace="http://www.springframework.org/schema/tool"/>
+    <xsd:import namespace="http://www.springframework.org/schema/context"/>
+    <xsd:import namespace="http://www.springframework.org/schema/data/repository"
+                schemaLocation="http://www.springframework.org/schema/data/repository/spring-repository.xsd"/>
+
+    <xsd:simpleType name="keyValueTemplateRef">
+        <xsd:annotation>
+            <xsd:appinfo>
+                <tool:annotation kind="ref">
+                    <tool:assignable-to type="org.springframework.data.keyvalue.core.KeyValueTemplate"/>
+                </tool:annotation>
+            </xsd:appinfo>
+        </xsd:annotation>
+        <xsd:union memberTypes="xsd:string"/>
+    </xsd:simpleType>
+
+    <xsd:simpleType name="mappingContextRef">
+        <xsd:annotation>
+            <xsd:appinfo>
+                <tool:annotation kind="ref">
+                    <tool:assignable-to type="org.springframework.data.mapping.context.MappingContext"/>
+                </tool:annotation>
+            </xsd:appinfo>
+        </xsd:annotation>
+        <xsd:union memberTypes="xsd:string"/>
+    </xsd:simpleType>
+
+    <xsd:simpleType name="queryCreatorType">
+        <xsd:annotation>
+            <xsd:appinfo>
+                <tool:annotation kind="direct">
+                    <tool:assignable-to type="java.lang.Class"/>
+                </tool:annotation>
+            </xsd:appinfo>
+        </xsd:annotation>
+        <xsd:union memberTypes="xsd:string"/>
+    </xsd:simpleType>
+
+    <xsd:attributeGroup name="redis-repository-attributes">
+        <xsd:attribute name="key-value-template-ref" type="keyValueTemplateRef" default="redisKeyValueTemplate">
+            <xsd:annotation>
+                <xsd:documentation>
+                    The reference to a KeyValue Template. Will default to 'redisKeyValueTemplate'.
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+
+        <xsd:attribute name="mapping-context-ref" type="mappingContextRef" use="optional" default="mappingContext">
+            <xsd:annotation>
+                <xsd:documentation source="org.springframework.data.mapping.model.MappingContext">
+                    The reference to a MappingContext. Will default to 'mappingContext'.
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+
+
+        <xsd:attribute name="query-creator" type="queryCreatorType"
+                       default="org.springframework.data.keyvalue.repository.query.SpelQueryCreator">
+            <xsd:annotation>
+                <xsd:documentation>
+                    Query creator type. Will default to
+                    'org.springframework.data.keyvalue.repository.query.SpelQueryCreator'.
+                </xsd:documentation>
+            </xsd:annotation>
+        </xsd:attribute>
+    </xsd:attributeGroup>
+
+    <xsd:element name="repositories">
+        <xsd:complexType>
+            <xsd:complexContent>
+                <xsd:extension base="repository:repositories">
+                    <xsd:attributeGroup ref="redis-repository-attributes"/>
+                    <xsd:attributeGroup ref="repository:repository-attributes"/>
+                </xsd:extension>
+            </xsd:complexContent>
+        </xsd:complexType>
+    </xsd:element>
+
+</xsd:schema>

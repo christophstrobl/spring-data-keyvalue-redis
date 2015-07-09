@@ -1,0 +1,4 @@
+# Tooling related information for the KeyValue Redis namespace
+http\://www.springframework.org/schema/data/keyvalue/redis/@name=KeyValue Redis Namespace
+http\://www.springframework.org/schema/data/keyvalue/redis/@prefix=redis
+http\://www.springframework.org/schema/data/keyvalue/redis/@icon=org/springframework/data/redis/config/spring-redis.gif

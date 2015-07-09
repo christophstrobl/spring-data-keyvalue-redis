@@ -1,0 +1,2 @@
+http\://www.springframework.org/schema/data/keyvalue/redis/spring-keyvalue-redis.xsd=org/springframework/data/keyvalue/redis/config/spring-keyvalue-redis-1.0.xsd
+http\://www.springframework.org/schema/data/keyvalue/redis/spring-keyvalue-redis-1.0.xsd=org/springframework/data/keyvalue/redis/config/spring-keyvalue-redis-1.0.xsd
