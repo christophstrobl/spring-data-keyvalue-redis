@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:redis="http://www.springframework.org/schema/data/keyvalue/redis"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/data/keyvalue/redis http://www.springframework.org/schema/data/keyvalue/redis/spring-keyvalue-redis-1.0.xsd
+
+		http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+
+    <redis:repositories base-package="org.springframework.data.keyvalue.redis.repository.config"
+                        key-value-template-ref="redisKeyValueTemplate"></redis:repositories>
+
+    <bean name="redisKeyValueAdapter" class="org.springframework.data.keyvalue.redis.RedisKeyValueAdapter"></bean>
+
+    <bean name="mappingContext"
+          class="org.springframework.data.keyvalue.core.mapping.context.KeyValueMappingContext"></bean>
+
+    <bean name="redisKeyValueTemplate" class="org.springframework.data.keyvalue.core.KeyValueTemplate">
+        <constructor-arg index="0" ref="redisKeyValueAdapter"/>
+        <constructor-arg index="1" ref="mappingContext"/>
+    </bean>
+
+
+</beans>

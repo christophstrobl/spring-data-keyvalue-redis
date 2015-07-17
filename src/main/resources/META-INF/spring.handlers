@@ -1,0 +1,1 @@
+http\://www.springframework.org/schema/data/keyvalue/redis=org.springframework.data.keyvalue.redis.repository.config.RedisRepositoryConfigNamespaceHandler

@@ -17,16 +17,26 @@ package org.springframework.data.keyvalue.redis.repository.config;
 
 import org.springframework.beans.factory.config.ConstructorArgumentValues;
 import org.springframework.beans.factory.support.AbstractBeanDefinition;
+import org.springframework.beans.factory.support.BeanDefinitionBuilder;
 import org.springframework.beans.factory.support.RootBeanDefinition;
+import org.springframework.core.annotation.AnnotationAttributes;
+import org.springframework.data.config.ParsingUtils;
 import org.springframework.data.keyvalue.core.KeyValueTemplate;
 import org.springframework.data.keyvalue.redis.RedisKeyValueAdapter;
 import org.springframework.data.keyvalue.repository.config.KeyValueRepositoryConfigurationExtension;
+import org.springframework.data.repository.config.AnnotationRepositoryConfigurationSource;
 import org.springframework.data.repository.config.RepositoryConfigurationSource;
+import org.springframework.data.repository.config.XmlRepositoryConfigurationSource;
+import org.w3c.dom.Element;
 
 /**
  * @author Christoph Strobl
  */
 public class RedisRepositoryConfigurationExtension extends KeyValueRepositoryConfigurationExtension {
+
+	private static final String KEY_VALUE_TEMPLATE_REF = "key-value-template-ref";
+	private static final String QUERY_CREATOR = "query-creator";
+	private static final String MAPPING_CONTEXT_REF = "mapping-context-ref";
 
 	/*
 	 * (non-Javadoc)
@@ -53,6 +63,20 @@ public class RedisRepositoryConfigurationExtension extends KeyValueRepositoryCon
 	@Override
 	protected String getDefaultKeyValueTemplateRef() {
 		return "redisKeyValueTemplate";
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * @see org.springframework.data.repository.config.RepositoryConfigurationExtensionSupport#postProcess(org.springframework.beans.factory.support.BeanDefinitionBuilder, org.springframework.data.repository.config.XmlRepositoryConfigurationSource)
+	 */
+	@Override
+	public void postProcess(BeanDefinitionBuilder builder, XmlRepositoryConfigurationSource config) {
+
+		Element element = config.getElement();
+
+		ParsingUtils.setPropertyReference(builder, element, KEY_VALUE_TEMPLATE_REF, "keyValueOperations");
+		ParsingUtils.setPropertyReference(builder, element, MAPPING_CONTEXT_REF, "mappingContext");
+		ParsingUtils.setPropertyValue(builder, element, QUERY_CREATOR, "queryCreator");
 	}
 
 	/*
