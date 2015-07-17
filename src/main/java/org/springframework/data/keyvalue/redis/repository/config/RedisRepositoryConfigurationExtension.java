@@ -81,20 +81,6 @@ public class RedisRepositoryConfigurationExtension extends KeyValueRepositoryCon
 
 	/*
 	 * (non-Javadoc)
-	 * @see org.springframework.data.repository.config.RepositoryConfigurationExtensionSupport#postProcess(org.springframework.beans.factory.support.BeanDefinitionBuilder, org.springframework.data.repository.config.AnnotationRepositoryConfigurationSource)
-	 */
-	@Override
-	public void postProcess(BeanDefinitionBuilder builder, AnnotationRepositoryConfigurationSource config) {
-
-		AnnotationAttributes attributes = config.getAttributes();
-
-		builder.addPropertyReference("keyValueOperations", attributes.getString(KEY_VALUE_TEMPLATE_BEAN_REF_ATTRIBUTE));
-		builder.addPropertyReference("mappingContext", attributes.getString(MAPPING_CONTEXT_BEAN_NAME));
-		builder.addPropertyValue("queryCreator", attributes.getString("queryCreator"));
-	}
-
-	/*
-	 * (non-Javadoc)
 	 * @see org.springframework.data.keyvalue.repository.config.KeyValueRepositoryConfigurationExtension#getDefaultKeyValueTemplateBeanDefinition(org.springframework.data.repository.config.RepositoryConfigurationSource)
 	 */
 	@Override
