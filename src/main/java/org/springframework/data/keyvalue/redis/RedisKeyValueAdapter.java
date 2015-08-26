@@ -27,6 +27,7 @@ import org.springframework.data.keyvalue.core.AbstractKeyValueAdapter;
 import org.springframework.data.keyvalue.redis.convert.MappingRedisConverter;
 import org.springframework.data.keyvalue.redis.convert.RedisConverter;
 import org.springframework.data.keyvalue.redis.convert.RedisDataObject;
+import org.springframework.data.keyvalue.redis.core.index.IndexConfiguration;
 import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.connection.jedis.JedisConnectionFactory;
 import org.springframework.data.redis.core.BoundHashOperations;
@@ -45,10 +46,14 @@ public class RedisKeyValueAdapter extends AbstractKeyValueAdapter {
 	private MappingRedisConverter converter;
 
 	public RedisKeyValueAdapter() {
+		this((IndexConfiguration) null);
+	}
+
+	public RedisKeyValueAdapter(IndexConfiguration indexConfiguration) {
 
 		super(new RedisQueryEngine());
 
-		converter = new MappingRedisConverter();
+		converter = new MappingRedisConverter(indexConfiguration);
 
 		JedisConnectionFactory conFactory = new JedisConnectionFactory();
 		conFactory.afterPropertiesSet();

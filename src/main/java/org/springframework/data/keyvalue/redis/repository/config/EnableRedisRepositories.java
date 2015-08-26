@@ -26,6 +26,7 @@ import org.springframework.beans.factory.FactoryBean;
 import org.springframework.context.annotation.ComponentScan.Filter;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.keyvalue.core.KeyValueOperations;
+import org.springframework.data.keyvalue.redis.core.index.IndexConfiguration;
 import org.springframework.data.keyvalue.redis.repository.query.RedisQueryCreator;
 import org.springframework.data.keyvalue.repository.config.QueryCreatorType;
 import org.springframework.data.keyvalue.repository.support.KeyValueRepositoryFactoryBean;
@@ -125,5 +126,12 @@ public @interface EnableRedisRepositories {
 	 * repositories infrastructure.
 	 */
 	boolean considerNestedRepositories() default false;
+
+	/**
+	 * TODO: explain configuration options
+	 * 
+	 * @return
+	 */
+	Class<? extends IndexConfiguration> indexConfiguration() default IndexConfiguration.class;
 
 }

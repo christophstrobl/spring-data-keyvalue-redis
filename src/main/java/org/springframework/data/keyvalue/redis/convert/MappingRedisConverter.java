@@ -34,8 +34,11 @@ import org.springframework.data.convert.TypeMapper;
 import org.springframework.data.keyvalue.core.mapping.KeyValuePersistentEntity;
 import org.springframework.data.keyvalue.core.mapping.KeyValuePersistentProperty;
 import org.springframework.data.keyvalue.core.mapping.context.KeyValueMappingContext;
-import org.springframework.data.keyvalue.redis.Indexed;
 import org.springframework.data.keyvalue.redis.Util.ByteUtils;
+import org.springframework.data.keyvalue.redis.core.index.IndexConfiguration;
+import org.springframework.data.keyvalue.redis.core.index.IndexType;
+import org.springframework.data.keyvalue.redis.core.index.Indexed;
+import org.springframework.data.keyvalue.redis.core.index.RedisIndexDefinition;
 import org.springframework.data.mapping.PersistentPropertyAccessor;
 import org.springframework.data.mapping.PreferredConstructor;
 import org.springframework.data.mapping.PropertyHandler;
@@ -64,7 +67,13 @@ public class MappingRedisConverter implements RedisConverter {
 	private final EntityInstantiators entityInstantiators;
 	private final TypeMapper<RedisDataObject> typeMapper;
 
+	private final IndexConfiguration indexConfiguration;
+
 	public MappingRedisConverter() {
+		this(null);
+	}
+
+	public MappingRedisConverter(IndexConfiguration indexConfiguration) {
 
 		mappingContext = new KeyValueMappingContext();
 		entityInstantiators = new EntityInstantiators();
@@ -77,6 +86,8 @@ public class MappingRedisConverter implements RedisConverter {
 		// TODO: add converters for dates, and booleans
 
 		typeMapper = new DefaultTypeMapper<RedisDataObject>(new RedisTypeAliasAccessor(this.conversionService));
+
+		this.indexConfiguration = indexConfiguration != null ? indexConfiguration : new IndexConfiguration();
 	}
 
 	public <R> R read(Class<R> type, final RedisDataObject source) {
@@ -182,15 +193,26 @@ public class MappingRedisConverter implements RedisConverter {
 				}
 
 				if (persistentProperty.isCollectionLike()) {
-					writeCollection(persistentProperty.getName(), (Collection<?>) accessor.getProperty(persistentProperty),
-							persistentProperty.getTypeInformation().getComponentType(), sink);
+					writeCollection(entity.getKeySpace(), persistentProperty.getName(), (Collection<?>) accessor
+							.getProperty(persistentProperty), persistentProperty.getTypeInformation().getComponentType(), sink);
 				} else if (persistentProperty.isEntity()) {
 
-					writePropertyInternal(persistentProperty.getName(), accessor.getProperty(persistentProperty),
-							persistentProperty.getTypeInformation().getActualType(), sink);
+					writePropertyInternal(entity.getKeySpace(), persistentProperty.getName(),
+							accessor.getProperty(persistentProperty), persistentProperty.getTypeInformation().getActualType(), sink);
 				} else {
 
-					if (persistentProperty.isAnnotationPresent(Indexed.class)) {
+					if (indexConfiguration.hasIndexFor(entity.getKeySpace(), persistentProperty.getName())) {
+
+						// TODO: check all index types and add accordingly
+						sink.addIndex(toBytes(persistentProperty.getName() + ":" + accessor.getProperty(persistentProperty)));
+					}
+
+					else if (persistentProperty.isAnnotationPresent(Indexed.class)) {
+
+						// TOOD: read index type from annotation
+						indexConfiguration.addIndexDefinition(new RedisIndexDefinition(entity.getKeySpace(), persistentProperty
+								.getName(), IndexType.SIMPLE));
+
 						sink.addIndex(toBytes(persistentProperty.getName() + ":" + accessor.getProperty(persistentProperty)));
 					}
 
@@ -201,8 +223,8 @@ public class MappingRedisConverter implements RedisConverter {
 
 	}
 
-	private void writePropertyInternal(final String path, final Object value, TypeInformation<?> typeHint,
-			final RedisDataObject sink) {
+	private void writePropertyInternal(final String keyspace, final String path, final Object value,
+			TypeInformation<?> typeHint, final RedisDataObject sink) {
 
 		if (value == null) {
 			return;
@@ -223,12 +245,27 @@ public class MappingRedisConverter implements RedisConverter {
 				String propertyStringPath = path + "." + persistentProperty.getName();
 
 				if (persistentProperty.isCollectionLike()) {
-					writeCollection(propertyStringPath, (Collection<?>) accessor.getProperty(persistentProperty),
+					writeCollection(keyspace, propertyStringPath, (Collection<?>) accessor.getProperty(persistentProperty),
 							persistentProperty.getTypeInformation().getComponentType(), sink);
 				} else if (persistentProperty.isEntity()) {
-					writePropertyInternal(propertyStringPath, accessor.getProperty(persistentProperty), persistentProperty
-							.getTypeInformation().getActualType(), sink);
+					writePropertyInternal(keyspace, propertyStringPath, accessor.getProperty(persistentProperty),
+							persistentProperty.getTypeInformation().getActualType(), sink);
 				} else {
+
+					if (indexConfiguration.hasIndexFor(entity.getKeySpace(), persistentProperty.getName())) {
+
+						// TODO: check all index types and add accordingly
+						sink.addIndex(toBytes(persistentProperty.getName() + ":" + accessor.getProperty(persistentProperty)));
+					}
+
+					else if (persistentProperty.isAnnotationPresent(Indexed.class)) {
+
+						// TOOD: read index type from annotation
+						indexConfiguration.addIndexDefinition(new RedisIndexDefinition(entity.getKeySpace(), persistentProperty
+								.getName(), IndexType.SIMPLE));
+
+						sink.addIndex(toBytes(persistentProperty.getName() + ":" + accessor.getProperty(persistentProperty)));
+					}
 					sink.put(toBytes(propertyStringPath), toBytes(accessor.getProperty(persistentProperty)));
 				}
 			}
@@ -236,7 +273,8 @@ public class MappingRedisConverter implements RedisConverter {
 
 	}
 
-	private void writeCollection(String path, Collection<?> values, TypeInformation<?> typeHint, RedisDataObject sink) {
+	private void writeCollection(String keyspace, String path, Collection<?> values, TypeInformation<?> typeHint,
+			RedisDataObject sink) {
 
 		if (values == null) {
 			return;
@@ -250,7 +288,7 @@ public class MappingRedisConverter implements RedisConverter {
 			if (conversionService.canConvert(o.getClass(), byte[].class)) {
 				sink.put(toBytes(currentPath), toBytes(o));
 			} else {
-				writePropertyInternal(currentPath, o, typeHint, sink);
+				writePropertyInternal(keyspace, currentPath, o, typeHint, sink);
 			}
 			i++;
 		}

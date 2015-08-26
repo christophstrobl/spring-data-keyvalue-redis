@@ -15,9 +15,12 @@
  */
 package org.springframework.data.keyvalue.redis.repository.config;
 
+import org.springframework.beans.DirectFieldAccessor;
 import org.springframework.beans.factory.config.ConstructorArgumentValues;
 import org.springframework.beans.factory.support.AbstractBeanDefinition;
+import org.springframework.beans.factory.support.GenericBeanDefinition;
 import org.springframework.beans.factory.support.RootBeanDefinition;
+import org.springframework.core.annotation.AnnotationAttributes;
 import org.springframework.data.keyvalue.core.KeyValueTemplate;
 import org.springframework.data.keyvalue.redis.RedisKeyValueAdapter;
 import org.springframework.data.keyvalue.repository.config.KeyValueRepositoryConfigurationExtension;
@@ -63,11 +66,22 @@ public class RedisRepositoryConfigurationExtension extends KeyValueRepositoryCon
 	protected AbstractBeanDefinition getDefaultKeyValueTemplateBeanDefinition(
 			RepositoryConfigurationSource configurationSource) {
 
-		RootBeanDefinition keyValueTemplateDefinition = new RootBeanDefinition(KeyValueTemplate.class);
+		RootBeanDefinition redisKeyValueAdapterDefinition = new RootBeanDefinition(RedisKeyValueAdapter.class);
 
-		ConstructorArgumentValues constructorArgumentValues = new ConstructorArgumentValues();
-		constructorArgumentValues.addGenericArgumentValue(new RootBeanDefinition(RedisKeyValueAdapter.class));
-		keyValueTemplateDefinition.setConstructorArgumentValues(constructorArgumentValues);
+		DirectFieldAccessor dfa = new DirectFieldAccessor(configurationSource);
+		AnnotationAttributes aa = (AnnotationAttributes) dfa.getPropertyValue("attributes");
+
+		GenericBeanDefinition indexConfiguration = new GenericBeanDefinition();
+		indexConfiguration.setBeanClass(aa.getClass("indexConfiguration"));
+
+		ConstructorArgumentValues constructorArgumentValuesForRedisKeyValueAdapter = new ConstructorArgumentValues();
+		constructorArgumentValuesForRedisKeyValueAdapter.addGenericArgumentValue(indexConfiguration);
+		redisKeyValueAdapterDefinition.setConstructorArgumentValues(constructorArgumentValuesForRedisKeyValueAdapter);
+
+		RootBeanDefinition keyValueTemplateDefinition = new RootBeanDefinition(KeyValueTemplate.class);
+		ConstructorArgumentValues constructorArgumentValuesForKeyValueTemplate = new ConstructorArgumentValues();
+		constructorArgumentValuesForKeyValueTemplate.addGenericArgumentValue(redisKeyValueAdapterDefinition);
+		keyValueTemplateDefinition.setConstructorArgumentValues(constructorArgumentValuesForKeyValueTemplate);
 
 		return keyValueTemplateDefinition;
 	}

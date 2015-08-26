@@ -21,6 +21,7 @@ import static org.junit.Assert.*;
 
 import java.io.Serializable;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import org.junit.Before;
@@ -30,6 +31,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.keyvalue.annotation.KeySpace;
+import org.springframework.data.keyvalue.redis.core.index.IndexConfiguration;
+import org.springframework.data.keyvalue.redis.core.index.Indexed;
+import org.springframework.data.keyvalue.redis.core.index.RedisIndexDefinition;
 import org.springframework.data.keyvalue.redis.repository.config.EnableRedisRepositories;
 import org.springframework.data.repository.CrudRepository;
 import org.springframework.test.context.ContextConfiguration;
@@ -43,7 +47,7 @@ import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 public class RedisTests {
 
 	@Configuration
-	@EnableRedisRepositories(considerNestedRepositories = true)
+	@EnableRedisRepositories(considerNestedRepositories = true, indexConfiguration = MyIndexConfiguration.class)
 	static class Config {
 
 	}
@@ -60,6 +64,7 @@ public class RedisTests {
 
 		Person rand = new Person();
 		rand.firstname = "rand";
+		rand.lastname = "al'thor";
 
 		Person egwene = new Person();
 		egwene.firstname = "egwene";
@@ -73,13 +78,23 @@ public class RedisTests {
 
 		assertThat(repo.findByFirstname("rand").size(), is(1));
 		assertThat(repo.findByFirstname("rand"), hasItem(rand));
+
+		assertThat(repo.findByLastname("al'thor"), hasItem(rand));
 	}
 
 	public static interface PersonRepository extends CrudRepository<Person, String> {
 
-		List<Person> findByFirstnameStartingWith(String firstname);
+		List<Person> findByLastname(String lastname);
 
 		List<Person> findByFirstname(String firstname);
+	}
+
+	static class MyIndexConfiguration extends IndexConfiguration {
+
+		@Override
+		protected Iterable<RedisIndexDefinition> initialConfiguration() {
+			return Collections.singleton(new RedisIndexDefinition("persons", "lastname"));
+		}
 	}
 
 	@KeySpace("persons")
@@ -88,6 +103,7 @@ public class RedisTests {
 
 		@Id String id;
 		@Indexed String firstname;
+		String lastname;
 
 		public String getId() {
 			return id;
@@ -103,6 +119,14 @@ public class RedisTests {
 
 		public void setFirstname(String firstname) {
 			this.firstname = firstname;
+		}
+
+		public void setLastname(String lastname) {
+			this.lastname = lastname;
+		}
+
+		public String getLastname() {
+			return lastname;
 		}
 
 		@Override
