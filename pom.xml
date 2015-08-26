@@ -38,12 +38,12 @@
 		<dependency>
 			<artifactId>spring-data-keyvalue</artifactId>
 			<groupId>org.springframework.data</groupId>
-			<version>1.0.0.M1</version>
+			<version>1.0.0.BUILD-SNAPSHOT</version>
 		</dependency>
 		<dependency>
 			<artifactId>spring-data-redis</artifactId>
 			<groupId>org.springframework.data</groupId>
-			<version>1.6.0.M1</version>
+			<version>1.6.0.BUILD-SNAPSHOT</version>
 		</dependency>
 		<dependency>
 			<artifactId>jedis</artifactId>

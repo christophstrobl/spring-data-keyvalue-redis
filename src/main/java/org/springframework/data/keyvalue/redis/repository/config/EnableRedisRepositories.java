@@ -26,8 +26,8 @@ import org.springframework.beans.factory.FactoryBean;
 import org.springframework.context.annotation.ComponentScan.Filter;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.keyvalue.core.KeyValueOperations;
+import org.springframework.data.keyvalue.redis.repository.query.RedisQueryCreator;
 import org.springframework.data.keyvalue.repository.config.QueryCreatorType;
-import org.springframework.data.keyvalue.repository.query.SpelQueryCreator;
 import org.springframework.data.keyvalue.repository.support.KeyValueRepositoryFactoryBean;
 import org.springframework.data.repository.config.DefaultRepositoryBaseClass;
 import org.springframework.data.repository.query.QueryLookupStrategy;
@@ -41,7 +41,7 @@ import org.springframework.data.repository.query.QueryLookupStrategy.Key;
 @Documented
 @Inherited
 @Import(RedisRepositoriesRegistrar.class)
-@QueryCreatorType(SpelQueryCreator.class)
+@QueryCreatorType(RedisQueryCreator.class)
 public @interface EnableRedisRepositories {
 
 	/**

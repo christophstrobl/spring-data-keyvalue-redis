@@ -71,13 +71,15 @@ public class RedisTests {
 		assertThat(repo.findOne(rand.id), is(rand));
 		assertThat(repo.findOne(egwene.id), is(egwene));
 
-		assertThat(repo.findByFirstnameStartingWith("ran").size(), is(1));
-		assertThat(repo.findByFirstnameStartingWith("ran"), hasItem(rand));
+		assertThat(repo.findByFirstname("rand").size(), is(1));
+		assertThat(repo.findByFirstname("rand"), hasItem(rand));
 	}
 
 	public static interface PersonRepository extends CrudRepository<Person, String> {
 
 		List<Person> findByFirstnameStartingWith(String firstname);
+
+		List<Person> findByFirstname(String firstname);
 	}
 
 	@KeySpace("persons")
@@ -85,7 +87,7 @@ public class RedisTests {
 	public static class Person implements Serializable {
 
 		@Id String id;
-		String firstname;
+		@Indexed String firstname;
 
 		public String getId() {
 			return id;
