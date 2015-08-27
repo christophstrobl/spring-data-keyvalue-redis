@@ -41,6 +41,29 @@ public final class ByteUtils {
 			cur = concat(cur, args[i]);
 		}
 		return cur;
+
 	}
 
+	public static byte[] extract(byte[] source, byte[] prefix, byte[] postfix) {
+
+		if (prefix.length > source.length) {
+			return new byte[] {};
+		}
+
+		for (int i = 0; i < prefix.length; i++) {
+			if (source[i] != prefix[i]) {
+				return new byte[] {};
+			}
+		}
+
+		for (int i = 0; i < postfix.length; i++) {
+			for (int j = prefix.length + i; j < source.length; j++) {
+				if (source[j] == postfix[i]) {
+					return Arrays.copyOfRange(source, prefix.length, j);
+				}
+			}
+		}
+
+		return new byte[] {};
+	}
 }

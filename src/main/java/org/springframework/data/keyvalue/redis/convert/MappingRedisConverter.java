@@ -18,6 +18,7 @@ package org.springframework.data.keyvalue.redis.convert;
 import java.nio.charset.Charset;
 import java.util.Collection;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 
 import org.springframework.core.CollectionFactory;
@@ -43,7 +44,6 @@ import org.springframework.data.mapping.PersistentPropertyAccessor;
 import org.springframework.data.mapping.PreferredConstructor;
 import org.springframework.data.mapping.PropertyHandler;
 import org.springframework.data.mapping.context.MappingContext;
-import org.springframework.data.mapping.model.MappingException;
 import org.springframework.data.mapping.model.PersistentEntityParameterValueProvider;
 import org.springframework.data.mapping.model.PropertyValueProvider;
 import org.springframework.data.util.ClassTypeInformation;
@@ -126,10 +126,22 @@ public class MappingRedisConverter implements RedisConverter {
 					return;
 				}
 
-				if (persistentProperty.isCollectionLike()) {
+				if (persistentProperty.isMap()) {
 
-					Collection target = CollectionFactory.createCollection(persistentProperty.getType(),
-							persistentProperty.getComponentType(), 10);
+					if (conversionService.canConvert(byte[].class, persistentProperty.getMapValueType())) {
+						accessor.setProperty(
+								persistentProperty,
+								readMap(currentPath, persistentProperty.getType(), source, persistentProperty.getMapValueType(),
+										persistentProperty.getComponentType()));
+					} else {
+						accessor.setProperty(
+								persistentProperty,
+								readMapOfComplexTypes(currentPath, persistentProperty.getType(), source,
+										persistentProperty.getMapValueType(), persistentProperty.getComponentType()));
+					}
+				}
+
+				else if (persistentProperty.isCollectionLike()) {
 
 					if (conversionService.canConvert(byte[].class, persistentProperty.getComponentType())) {
 						accessor.setProperty(
@@ -146,27 +158,22 @@ public class MappingRedisConverter implements RedisConverter {
 				} else if (persistentProperty.isEntity()) {
 
 					Map<byte[], byte[]> raw = source.hashStartingWith(toBytes(currentPath + "."));
+					RedisDataObject source = new RedisDataObject(raw);
+					byte[] type = source.get(toBytes(currentPath + "._class"));
+					if (type != null && type.length > 0) {
+						source.put(toBytes("_class"), type);
+					}
 
 					Class<?> myType = persistentProperty.getTypeInformation().getActualType().getType();
 
-					String type = fromBytes(raw.get(toBytes(currentPath + "._class")), String.class);
-					if (type != null) {
-						try {
-							myType = ClassUtils.forName(type, null);
-						} catch (ClassNotFoundException e) {
-							throw new MappingException("Cannot find type " + type, e);
-						} catch (LinkageError e) {
-							throw new MappingException("Cannot find type " + type, e);
-						}
-					}
-
-					accessor.setProperty(persistentProperty, readInternal(currentPath, myType, new RedisDataObject(raw)));
+					accessor.setProperty(persistentProperty, readInternal(currentPath, myType, source));
 
 				} else {
 					accessor.setProperty(persistentProperty,
 							fromBytes(source.get(toBytes(currentPath)), persistentProperty.getActualType()));
 				}
 			}
+
 		});
 
 		return (R) instance;
@@ -192,7 +199,12 @@ public class MappingRedisConverter implements RedisConverter {
 					return;
 				}
 
-				if (persistentProperty.isCollectionLike()) {
+				if (persistentProperty.isMap()) {
+					writeMapInteral(entity.getKeySpace(), persistentProperty.getName(), persistentProperty.getMapValueType(),
+							(Map<?, ?>) accessor.getProperty(persistentProperty), sink);
+				}
+
+				else if (persistentProperty.isCollectionLike()) {
 					writeCollection(entity.getKeySpace(), persistentProperty.getName(), (Collection<?>) accessor
 							.getProperty(persistentProperty), persistentProperty.getTypeInformation().getComponentType(), sink);
 				} else if (persistentProperty.isEntity()) {
@@ -223,6 +235,30 @@ public class MappingRedisConverter implements RedisConverter {
 
 	}
 
+	private void writeMapInteral(String keyspace, String path, Class<?> mapValueType, Map<?, ?> value,
+			RedisDataObject sink) {
+		if (CollectionUtils.isEmpty(value)) {
+			return;
+		}
+
+		for (Map.Entry<?, ?> entry : value.entrySet()) {
+
+			if (entry.getValue() == null || entry.getKey() == null) {
+				continue;
+			}
+
+			String currentPath = path + ".[" + entry.getKey() + "]";
+
+			if (conversionService.canConvert(entry.getValue().getClass(), byte[].class)) {
+				sink.put(toBytes(currentPath), toBytes(entry.getValue()));
+			} else {
+				writePropertyInternal(keyspace, currentPath, entry.getValue(), ClassTypeInformation.from(mapValueType), sink);
+				;
+			}
+		}
+
+	}
+
 	private void writePropertyInternal(final String keyspace, final String path, final Object value,
 			TypeInformation<?> typeHint, final RedisDataObject sink) {
 
@@ -244,7 +280,10 @@ public class MappingRedisConverter implements RedisConverter {
 
 				String propertyStringPath = path + "." + persistentProperty.getName();
 
-				if (persistentProperty.isCollectionLike()) {
+				if (persistentProperty.isMap()) {
+					writeMapInteral(keyspace, propertyStringPath, persistentProperty.getMapValueType(),
+							(Map<?, ?>) accessor.getProperty(persistentProperty), sink);
+				} else if (persistentProperty.isCollectionLike()) {
 					writeCollection(keyspace, propertyStringPath, (Collection<?>) accessor.getProperty(persistentProperty),
 							persistentProperty.getTypeInformation().getComponentType(), sink);
 				} else if (persistentProperty.isEntity()) {
@@ -303,14 +342,14 @@ public class MappingRedisConverter implements RedisConverter {
 
 		for (byte[] value : values) {
 
-			System.out.println(new String(value));
-
 			RedisDataObject source = new RedisDataObject(rdo.hashStartingWith(value));
 
-			System.out.println(source);
-			Object o = readInternal(fromBytes(value, String.class), typeHint.getActualType().getType(), source);
+			byte[] typeInfo = rdo.get(ByteUtils.concat(value, toBytes("._class")));
+			if (typeInfo != null && typeInfo.length > 0) {
+				source.put(toBytes("_class"), typeInfo);
+			}
 
-			System.out.println(o);
+			Object o = readInternal(fromBytes(value, String.class), typeHint.getActualType().getType(), source);
 			target.add(o);
 		}
 		return target;
@@ -325,6 +364,52 @@ public class MappingRedisConverter implements RedisConverter {
 
 		for (byte[] value : values.values()) {
 			target.add(fromBytes(value, typeHint.getType()));
+		}
+		return target;
+	}
+
+	private Map<?, ?> readMapOfComplexTypes(String path, Class<?> mapType, RedisDataObject rdo, Class<?> valueType,
+			Class<?> keyType) {
+
+		Map target = CollectionFactory.createMap(mapType, 10);
+
+		byte[] prefix = toBytes(path + ".[");
+		byte[] postfix = toBytes("]");
+		Set<byte[]> values = rdo.keyRange(prefix);
+
+		for (byte[] value : values) {
+
+			byte[] binKey = ByteUtils.extract(value, prefix, postfix);
+
+			Object key = fromBytes(binKey, keyType);
+
+			RedisDataObject source = new RedisDataObject(rdo.hashStartingWith(value));
+
+			byte[] typeInfo = rdo.get(ByteUtils.concat(value, toBytes("._class")));
+			if (typeInfo != null && typeInfo.length > 0) {
+				source.put(toBytes("_class"), typeInfo);
+			}
+
+			Object o = readInternal(fromBytes(value, String.class), valueType, source);
+
+			target.put(key, o);
+		}
+		return target;
+	}
+
+	private Map<?, ?> readMap(String path, Class<?> mapType, RedisDataObject rdo, Class<?> valueType, Class<?> keyType) {
+
+		Map target = CollectionFactory.createMap(mapType, 10);
+
+		byte[] prefix = toBytes(path + ".[");
+		byte[] postfix = toBytes("]");
+		Map<byte[], byte[]> values = rdo.hashStartingWith(toBytes(path + ".["));
+		for (Entry<byte[], byte[]> entry : values.entrySet()) {
+
+			byte[] binKey = ByteUtils.extract(entry.getKey(), prefix, postfix);
+
+			Object key = fromBytes(binKey, keyType);
+			target.put(key, fromBytes(entry.getValue(), valueType));
 		}
 		return target;
 	}

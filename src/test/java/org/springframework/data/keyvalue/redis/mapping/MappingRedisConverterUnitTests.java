@@ -17,11 +17,14 @@ package org.springframework.data.keyvalue.redis.mapping;
 
 import static org.hamcrest.core.Is.*;
 import static org.hamcrest.core.IsCollectionContaining.*;
+import static org.hamcrest.core.IsInstanceOf.*;
 import static org.hamcrest.core.IsNull.*;
 import static org.junit.Assert.*;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -127,8 +130,6 @@ public class MappingRedisConverterUnitTests {
 
 		RedisDataObject target = write(rand);
 
-		System.out.println(target);
-
 		assertThat(target.hashAsUtf8String().get("coworkers.[0].firstname"), is("mat"));
 		assertThat(target.hashAsUtf8String().get("coworkers.[0].nicknames.[0]"), is("prince of the ravens"));
 		assertThat(target.hashAsUtf8String().get("coworkers.[1].firstname"), is("perrin"));
@@ -160,6 +161,18 @@ public class MappingRedisConverterUnitTests {
 		RedisDataObject target = write(rand);
 
 		assertThat(target.hashAsUtf8String().get("address._class"), is(AddressWithPostcode.class.getName()));
+	}
+
+	@Test
+	public void readConsidersClassTypeInformationCorrectlyForNonMatchingTypes() {
+
+		Map<String, String> map = new HashMap<String, String>();
+		map.put("address._class", AddressWithPostcode.class.getName());
+		map.put("address.postcode", "1234");
+
+		Person target = converter.read(Person.class, RedisDataObject.fromStringMap(map));
+
+		assertThat(target.address, instanceOf(AddressWithPostcode.class));
 	}
 
 	@Test
@@ -230,6 +243,134 @@ public class MappingRedisConverterUnitTests {
 		assertThat(target.coworkers.get(1).address.city, is("two rivers"));
 	}
 
+	@Test
+	public void readListComplexPropertyCorrectlyAndConsidersClassTypeInformation() {
+
+		Map<String, String> map = new LinkedHashMap<String, String>();
+		map.put("coworkers.[0]._class", TaVeren.class.getName());
+		map.put("coworkers.[0].firstname", "mat");
+
+		RedisDataObject rdo = RedisDataObject.fromStringMap(map);
+
+		Person target = converter.read(Person.class, rdo);
+
+		assertThat(target.coworkers, notNullValue());
+		assertThat(target.coworkers.get(0), instanceOf(TaVeren.class));
+		assertThat(target.coworkers.get(0).firstname, is("mat"));
+	}
+
+	@Test
+	public void writeAppendsMapWithSimpleKeyCorrectly() {
+
+		Map<String, String> map = new LinkedHashMap<String, String>();
+		map.put("hair-color", "red");
+		map.put("eye-color", "grey");
+
+		rand.physicalAttributes = map;
+
+		RedisDataObject target = write(rand);
+
+		assertThat(target.hashAsUtf8String().get("physicalAttributes.[hair-color]"), is("red"));
+		assertThat(target.hashAsUtf8String().get("physicalAttributes.[eye-color]"), is("grey"));
+	}
+
+	@Test
+	public void writeAppendsMapWithSimpleKeyOnNestedObjectCorrectly() {
+
+		Map<String, String> map = new LinkedHashMap<String, String>();
+		map.put("hair-color", "red");
+		map.put("eye-color", "grey");
+
+		rand.coworkers = new ArrayList<Person>();
+		rand.coworkers.add(new Person());
+		rand.coworkers.get(0).physicalAttributes = map;
+
+		RedisDataObject target = write(rand);
+
+		assertThat(target.hashAsUtf8String().get("coworkers.[0].physicalAttributes.[hair-color]"), is("red"));
+		assertThat(target.hashAsUtf8String().get("coworkers.[0].physicalAttributes.[eye-color]"), is("grey"));
+	}
+
+	@Test
+	public void readSimpleMapValuesCorrectly() {
+
+		Map<String, String> map = new LinkedHashMap<String, String>();
+		map.put("physicalAttributes.[hair-color]", "red");
+		map.put("physicalAttributes.[eye-color]", "grey");
+
+		RedisDataObject rdo = RedisDataObject.fromStringMap(map);
+
+		Person target = converter.read(Person.class, rdo);
+
+		assertThat(target.physicalAttributes, notNullValue());
+		assertThat(target.physicalAttributes.get("hair-color"), is("red"));
+		assertThat(target.physicalAttributes.get("eye-color"), is("grey"));
+	}
+
+	@Test
+	public void writeAppendsMapWithComplexObjectsCorrectly() {
+
+		Map<String, Person> map = new LinkedHashMap<String, Person>();
+		Person janduin = new Person();
+		janduin.firstname = "janduin";
+		map.put("father", janduin);
+		Person tam = new Person();
+		tam.firstname = "tam";
+		map.put("step-father", tam);
+
+		rand.relatives = map;
+
+		RedisDataObject target = write(rand);
+
+		assertThat(target.hashAsUtf8String().get("relatives.[father].firstname"), is("janduin"));
+		assertThat(target.hashAsUtf8String().get("relatives.[step-father].firstname"), is("tam"));
+	}
+
+	@Test
+	public void readMapWithComplexObjectsCorrectly() {
+
+		Map<String, String> map = new LinkedHashMap<String, String>();
+		map.put("relatives.[father].firstname", "janduin");
+		map.put("relatives.[step-father].firstname", "tam");
+
+		Person target = converter.read(Person.class, RedisDataObject.fromStringMap(map));
+
+		assertThat(target.relatives, notNullValue());
+		assertThat(target.relatives.get("father"), notNullValue());
+		assertThat(target.relatives.get("father").firstname, is("janduin"));
+		assertThat(target.relatives.get("step-father"), notNullValue());
+		assertThat(target.relatives.get("step-father").firstname, is("tam"));
+	}
+
+	@Test
+	public void writeAppendsClassTypeInformationCorrectlyForMapWithComplexObjects() {
+
+		Map<String, Person> map = new LinkedHashMap<String, Person>();
+		Person lews = new TaVeren();
+		lews.firstname = "lews";
+		map.put("previous-incarnation", lews);
+
+		rand.relatives = map;
+
+		RedisDataObject target = write(rand);
+
+		assertThat(target.hashAsUtf8String().get("relatives.[previous-incarnation]._class"), is(TaVeren.class.getName()));
+	}
+
+	@Test
+	public void readConsidersClassTypeInformationCorrectlyForMapWithComplexObjects() {
+
+		Map<String, String> map = new LinkedHashMap<String, String>();
+		map.put("relatives.[previous-incarnation]._class", TaVeren.class.getName());
+		map.put("relatives.[previous-incarnation].firstname", "lews");
+
+		Person target = converter.read(Person.class, RedisDataObject.fromStringMap(map));
+
+		assertThat(target.relatives.get("previous-incarnation"), notNullValue());
+		assertThat(target.relatives.get("previous-incarnation"), instanceOf(TaVeren.class));
+		assertThat(target.relatives.get("previous-incarnation").firstname, is("lews"));
+	}
+
 	private RedisDataObject write(Object source) {
 
 		RedisDataObject rdo = new RedisDataObject();
@@ -247,6 +388,9 @@ public class MappingRedisConverterUnitTests {
 		List<Person> coworkers;
 
 		Address address;
+
+		Map<String, String> physicalAttributes;
+		Map<String, Person> relatives;
 	}
 
 	static class Address {
