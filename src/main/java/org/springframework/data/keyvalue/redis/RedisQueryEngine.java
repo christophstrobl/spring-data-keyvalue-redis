@@ -29,7 +29,7 @@ import org.springframework.data.keyvalue.core.CriteriaAccessor;
 import org.springframework.data.keyvalue.core.QueryEngine;
 import org.springframework.data.keyvalue.core.SortAccessor;
 import org.springframework.data.keyvalue.core.query.KeyValueQuery;
-import org.springframework.data.keyvalue.redis.convert.RedisDataObject;
+import org.springframework.data.keyvalue.redis.convert.RedisData;
 import org.springframework.data.keyvalue.redis.repository.query.RedisOperationChain;
 import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.core.RedisCallback;
@@ -87,7 +87,7 @@ public class RedisQueryEngine extends QueryEngine<RedisKeyValueAdapter, RedisOpe
 
 		List<Object> result = new ArrayList<Object>(raw.size());
 		for (Map<byte[], byte[]> rawData : raw) {
-			Object converted = this.getAdapter().getConverter().read(Object.class, new RedisDataObject(rawData));
+			Object converted = this.getAdapter().getConverter().read(Object.class, new RedisData(rawData));
 			if (converted != null) {
 				result.add(converted);
 			}

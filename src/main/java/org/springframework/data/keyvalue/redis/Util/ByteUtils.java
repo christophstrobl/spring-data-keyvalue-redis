@@ -26,6 +26,28 @@ public final class ByteUtils {
 
 	private ByteUtils() {}
 
+	public static boolean startsWith(byte[] source, byte[] prefix) {
+
+		if (source == null && prefix == null) {
+			return true;
+		}
+
+		if (source == null || prefix == null) {
+			return false;
+		}
+
+		if (prefix.length > source.length) {
+			return false;
+		}
+
+		for (int i = 0; i < prefix.length; i++) {
+			if (source[i] != prefix[i]) {
+				return false;
+			}
+		}
+		return true;
+	}
+
 	public static byte[] concat(byte[] arg1, byte[] arg2) {
 
 		byte[] result = Arrays.copyOf(arg1, arg1.length + arg2.length);

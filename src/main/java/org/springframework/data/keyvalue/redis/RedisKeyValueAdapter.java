@@ -26,7 +26,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.data.keyvalue.core.AbstractKeyValueAdapter;
 import org.springframework.data.keyvalue.redis.convert.MappingRedisConverter;
 import org.springframework.data.keyvalue.redis.convert.RedisConverter;
-import org.springframework.data.keyvalue.redis.convert.RedisDataObject;
+import org.springframework.data.keyvalue.redis.convert.RedisData;
 import org.springframework.data.keyvalue.redis.core.index.IndexConfiguration;
 import org.springframework.data.redis.connection.RedisConnection;
 import org.springframework.data.redis.connection.jedis.JedisConnectionFactory;
@@ -71,7 +71,7 @@ public class RedisKeyValueAdapter extends AbstractKeyValueAdapter {
 
 	public Object put(final Serializable id, final Object item, final Serializable keyspace) {
 
-		final RedisDataObject rdo = new RedisDataObject();
+		final RedisData rdo = new RedisData();
 		converter.write(item, rdo);
 
 		redisOps.execute(new RedisCallback<Object>() {
@@ -79,11 +79,11 @@ public class RedisKeyValueAdapter extends AbstractKeyValueAdapter {
 			@Override
 			public Object doInRedis(RedisConnection connection) throws DataAccessException {
 
-				connection.hMSet(rdo.getKey(), rdo.rawHash());
+				connection.hMSet(rdo.getKey(), rdo.getData());
 				connection.sAdd(rdo.getKeyspace(), rdo.getId());
 
-				if (!rdo.getIndexKeys().isEmpty()) {
-					for (byte[] index : rdo.getIndexKeys()) {
+				if (!rdo.getSimpleIndexKeys().isEmpty()) {
+					for (byte[] index : rdo.getSimpleIndexKeys()) {
 						connection.sAdd(index, rdo.getId());
 					}
 				}
@@ -109,7 +109,7 @@ public class RedisKeyValueAdapter extends AbstractKeyValueAdapter {
 
 	public Object get(Serializable id, Serializable keyspace) {
 
-		final byte[] binId = converter.byteEntityId(keyspace, id);
+		final byte[] binId = converter.convertToId(keyspace, id);
 
 		Map<byte[], byte[]> raw = redisOps.execute(new RedisCallback<Map<byte[], byte[]>>() {
 
@@ -119,7 +119,7 @@ public class RedisKeyValueAdapter extends AbstractKeyValueAdapter {
 			}
 		});
 
-		return converter.read(Object.class, new RedisDataObject(raw));
+		return converter.read(Object.class, new RedisData(raw));
 	}
 
 	public Object delete(final Serializable id, final Serializable keyspace) {
@@ -136,7 +136,7 @@ public class RedisKeyValueAdapter extends AbstractKeyValueAdapter {
 				@Override
 				public Void doInRedis(RedisConnection connection) throws DataAccessException {
 
-					connection.del(converter.byteEntityId(binKeyspace, binId));
+					connection.del(converter.convertToId(binKeyspace, binId));
 					connection.sRem(binKeyspace, binId);
 
 					Set<byte[]> potentialIndex = connection.keys(converter.toBytes(keyspace + ".*"));
@@ -170,7 +170,7 @@ public class RedisKeyValueAdapter extends AbstractKeyValueAdapter {
 				Set<byte[]> members = connection.sMembers(binKeyspace);
 
 				for (byte[] id : members) {
-					rawData.add(connection.hGetAll(converter.byteEntityId(binKeyspace, id)));
+					rawData.add(connection.hGetAll(converter.convertToId(binKeyspace, id)));
 				}
 
 				return rawData;
@@ -179,7 +179,7 @@ public class RedisKeyValueAdapter extends AbstractKeyValueAdapter {
 
 		List<Object> result = new ArrayList<Object>(raw.size());
 		for (Map<byte[], byte[]> rawData : raw) {
-			result.add(converter.read(Object.class, new RedisDataObject(rawData)));
+			result.add(converter.read(Object.class, new RedisData(rawData)));
 		}
 
 		return result;
