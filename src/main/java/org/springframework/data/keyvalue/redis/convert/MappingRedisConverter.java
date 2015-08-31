@@ -23,6 +23,9 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 
+import org.springframework.beans.BeansException;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
 import org.springframework.core.CollectionFactory;
 import org.springframework.core.convert.ConversionService;
 import org.springframework.core.convert.ConverterNotFoundException;
@@ -36,11 +39,15 @@ import org.springframework.data.convert.TypeMapper;
 import org.springframework.data.keyvalue.core.mapping.KeyValuePersistentEntity;
 import org.springframework.data.keyvalue.core.mapping.KeyValuePersistentProperty;
 import org.springframework.data.keyvalue.core.mapping.context.KeyValueMappingContext;
+import org.springframework.data.keyvalue.redis.RedisKeyValueAdapter;
+import org.springframework.data.keyvalue.redis.ReferenceResolver;
 import org.springframework.data.keyvalue.redis.Util.ByteUtils;
 import org.springframework.data.keyvalue.redis.core.index.IndexConfiguration;
 import org.springframework.data.keyvalue.redis.core.index.IndexType;
 import org.springframework.data.keyvalue.redis.core.index.Indexed;
 import org.springframework.data.keyvalue.redis.core.index.RedisIndexDefinition;
+import org.springframework.data.mapping.Association;
+import org.springframework.data.mapping.AssociationHandler;
 import org.springframework.data.mapping.PersistentPropertyAccessor;
 import org.springframework.data.mapping.PreferredConstructor;
 import org.springframework.data.mapping.PropertyHandler;
@@ -90,20 +97,22 @@ import org.springframework.util.CollectionUtils;
  * 
  * @author Christoph Strobl
  */
-public class MappingRedisConverter implements RedisConverter {
+public class MappingRedisConverter implements RedisConverter, ApplicationContextAware {
 
 	private final KeyValueMappingContext mappingContext;
 	private final GenericConversionService conversionService;
 	private final EntityInstantiators entityInstantiators;
 	private final TypeMapper<RedisData> typeMapper;
+	private final ReferenceResolver referenceResolver;
 
 	private final IndexConfiguration indexConfiguration;
+	private RedisKeyValueAdapter adapter;
 
 	public MappingRedisConverter() {
-		this(null);
+		this(null, null);
 	}
 
-	public MappingRedisConverter(IndexConfiguration indexConfiguration) {
+	public MappingRedisConverter(IndexConfiguration indexConfiguration, ReferenceResolver referenceResolver) {
 
 		mappingContext = new KeyValueMappingContext();
 		entityInstantiators = new EntityInstantiators();
@@ -123,6 +132,7 @@ public class MappingRedisConverter implements RedisConverter {
 		typeMapper = new DefaultTypeMapper<RedisData>(new RedisTypeAliasAccessor(this.conversionService));
 
 		this.indexConfiguration = indexConfiguration != null ? indexConfiguration : new IndexConfiguration();
+		this.referenceResolver = referenceResolver;
 	}
 
 	/*
@@ -216,7 +226,62 @@ public class MappingRedisConverter implements RedisConverter {
 
 		});
 
+		readAssociation(path, source, entity, accessor);
+
 		return (R) instance;
+	}
+
+	private void readAssociation(final String path, final RedisData source, final KeyValuePersistentEntity<?> entity,
+			final PersistentPropertyAccessor accessor) {
+
+		entity.doWithAssociations(new AssociationHandler<KeyValuePersistentProperty>() {
+
+			@Override
+			public void doWithAssociation(Association<KeyValuePersistentProperty> association) {
+
+				String currentPath = !path.isEmpty() ? path + "." + association.getInverse().getName() : association
+						.getInverse().getName();
+
+				if (association.getInverse().isCollectionLike()) {
+
+					Collection target = CollectionFactory.createCollection(association.getInverse().getType(), association
+							.getInverse().getComponentType(), 10);
+
+					Map<byte[], byte[]> values = extractDataStartingWith(toBytes(currentPath + ".["), source);
+					for (Entry<byte[], byte[]> entry : values.entrySet()) {
+
+						String key = fromBytes(entry.getValue(), String.class);
+						String[] args = key.split(":");
+
+						Object loadedObject = referenceResolver.resolveReference(args[1], args[0], association.getInverse()
+								.getActualType());
+
+						if (loadedObject != null) {
+							target.add(loadedObject);
+						}
+					}
+
+					accessor.setProperty(association.getInverse(), target);
+
+				} else {
+
+					byte[] binKey = source.getDataForKey(toBytes(currentPath));
+					if (binKey == null || binKey.length == 0) {
+						return;
+					}
+
+					String key = fromBytes(binKey, String.class);
+
+					String[] args = key.split(":");
+					Object loadedObject = referenceResolver.resolveReference(args[1], args[0], association.getInverse()
+							.getActualType());
+
+					if (loadedObject != null) {
+						accessor.setProperty(association.getInverse(), loadedObject);
+					}
+				}
+			}
+		});
 	}
 
 	/*
@@ -230,7 +295,8 @@ public class MappingRedisConverter implements RedisConverter {
 		typeMapper.writeType(ClassUtils.getUserClass(source), sink);
 		sink.setKeyspace(toBytes(entity.getKeySpace()));
 
-		writePropertyInternal(entity.getKeySpace(), "", source, entity.getTypeInformation(), sink);
+		writeInternal(entity.getKeySpace(), "", source, entity.getTypeInformation(), sink);
+		sink.setId(toBytes(entity.getIdentifierAccessor(source).getIdentifier()));
 	}
 
 	/**
@@ -240,8 +306,8 @@ public class MappingRedisConverter implements RedisConverter {
 	 * @param typeHint
 	 * @param sink
 	 */
-	private void writePropertyInternal(final String keyspace, final String path, final Object value,
-			TypeInformation<?> typeHint, final RedisData sink) {
+	private void writeInternal(final String keyspace, final String path, final Object value, TypeInformation<?> typeHint,
+			final RedisData sink) {
 
 		if (value == null) {
 			return;
@@ -263,7 +329,6 @@ public class MappingRedisConverter implements RedisConverter {
 
 				if (persistentProperty.isIdProperty()) {
 
-					sink.setId(toBytes(accessor.getProperty(persistentProperty)));
 					sink.addDataEntry(toBytes(persistentProperty.getName()), toBytes(accessor.getProperty(persistentProperty)));
 					return;
 				}
@@ -275,8 +340,8 @@ public class MappingRedisConverter implements RedisConverter {
 					writeCollection(keyspace, propertyStringPath, (Collection<?>) accessor.getProperty(persistentProperty),
 							persistentProperty.getTypeInformation().getComponentType(), sink);
 				} else if (persistentProperty.isEntity()) {
-					writePropertyInternal(keyspace, propertyStringPath, accessor.getProperty(persistentProperty),
-							persistentProperty.getTypeInformation().getActualType(), sink);
+					writeInternal(keyspace, propertyStringPath, accessor.getProperty(persistentProperty), persistentProperty
+							.getTypeInformation().getActualType(), sink);
 				} else {
 
 					if (indexConfiguration.hasIndexFor(entity.getKeySpace(), persistentProperty.getName())) {
@@ -300,6 +365,57 @@ public class MappingRedisConverter implements RedisConverter {
 			}
 		});
 
+		writeAssiciation(keyspace, path, entity, value, sink);
+	}
+
+	private void writeAssiciation(final String keyspace, final String path, final KeyValuePersistentEntity<?> entity,
+			final Object value, final RedisData sink) {
+
+		if (value == null) {
+			return;
+		}
+
+		final PersistentPropertyAccessor accessor = entity.getPropertyAccessor(value);
+
+		entity.doWithAssociations(new AssociationHandler<KeyValuePersistentProperty>() {
+
+			@Override
+			public void doWithAssociation(Association<KeyValuePersistentProperty> association) {
+
+				Object refObject = accessor.getProperty(association.getInverse());
+				if (refObject == null) {
+					return;
+				}
+
+				if (association.getInverse().isCollectionLike()) {
+
+					KeyValuePersistentEntity<?> ref = mappingContext.getPersistentEntity(association.getInverse()
+							.getTypeInformation().getComponentType().getActualType());
+
+					String keyspace = ref.getKeySpace();
+					String propertyStringPath = (!path.isEmpty() ? path + "." : "") + association.getInverse().getName();
+
+					int i = 0;
+					for (Object o : (Collection<?>) refObject) {
+
+						Object refId = ref.getPropertyAccessor(o).getProperty(ref.getIdProperty());
+						sink.addDataEntry(toBytes(propertyStringPath + ".[" + i + "]"), toBytes(keyspace + ":" + refId));
+						i++;
+					}
+
+				} else {
+
+					KeyValuePersistentEntity<?> ref = mappingContext.getPersistentEntity(association.getInverse()
+							.getTypeInformation());
+					String keyspace = ref.getKeySpace();
+
+					Object refId = ref.getPropertyAccessor(refObject).getProperty(ref.getIdProperty());
+
+					String propertyStringPath = (!path.isEmpty() ? path + "." : "") + association.getInverse().getName();
+					sink.addDataEntry(toBytes(propertyStringPath), toBytes(keyspace + ":" + refId));
+				}
+			}
+		});
 	}
 
 	/**
@@ -324,7 +440,7 @@ public class MappingRedisConverter implements RedisConverter {
 			if (conversionService.canConvert(o.getClass(), byte[].class)) {
 				sink.addDataEntry(toBytes(currentPath), toBytes(o));
 			} else {
-				writePropertyInternal(keyspace, currentPath, o, typeHint, sink);
+				writeInternal(keyspace, currentPath, o, typeHint, sink);
 			}
 			i++;
 		}
@@ -402,7 +518,7 @@ public class MappingRedisConverter implements RedisConverter {
 			if (conversionService.canConvert(entry.getValue().getClass(), byte[].class)) {
 				sink.addDataEntry(toBytes(currentPath), toBytes(entry.getValue()));
 			} else {
-				writePropertyInternal(keyspace, currentPath, entry.getValue(), ClassTypeInformation.from(mapValueType), sink);
+				writeInternal(keyspace, currentPath, entry.getValue(), ClassTypeInformation.from(mapValueType), sink);
 			}
 		}
 	}
@@ -610,6 +726,12 @@ public class MappingRedisConverter implements RedisConverter {
 		public void writeTypeTo(RedisData sink, Object alias) {
 			sink.addDataEntry(typeKey, conversionService.convert(alias, byte[].class));
 		}
+	}
+
+	@Override
+	public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
+		this.adapter = applicationContext.getBean(RedisKeyValueAdapter.class);
+
 	}
 
 }

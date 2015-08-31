@@ -20,6 +20,8 @@ import static org.hamcrest.core.IsCollectionContaining.*;
 import static org.hamcrest.core.IsInstanceOf.*;
 import static org.hamcrest.core.IsNull.*;
 import static org.junit.Assert.*;
+import static org.mockito.Matchers.*;
+import static org.mockito.Mockito.*;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -34,20 +36,27 @@ import java.util.UUID;
 
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.runners.MockitoJUnitRunner;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Reference;
 import org.springframework.data.keyvalue.annotation.KeySpace;
+import org.springframework.data.keyvalue.redis.ReferenceResolver;
 import org.springframework.data.keyvalue.redis.convert.MappingRedisConverter;
 import org.springframework.data.keyvalue.redis.convert.RedisData;
 
+@RunWith(MockitoJUnitRunner.class)
 public class MappingRedisConverterUnitTests {
 
+	@Mock ReferenceResolver resolverMock;
 	MappingRedisConverter converter;
 	Person rand;
 
 	@Before
 	public void setUp() {
 
-		converter = new MappingRedisConverter();
+		converter = new MappingRedisConverter(null, resolverMock);
 		rand = new Person();
 
 	}
@@ -409,7 +418,8 @@ public class MappingRedisConverterUnitTests {
 	@Test
 	public void readsBooleanValuesCorrectly() {
 
-		Person target = converter.read(Person.class, RedisData.newRedisDataFromStringMap(Collections.singletonMap("alive", "1")));
+		Person target = converter.read(Person.class,
+				RedisData.newRedisDataFromStringMap(Collections.singletonMap("alive", "1")));
 
 		assertThat(target.alive, is(Boolean.TRUE));
 	}
@@ -422,7 +432,8 @@ public class MappingRedisConverterUnitTests {
 
 		rand.birthdate = cal.getTime();
 
-		assertThat(write(rand).getDataAsUtf8String().get("birthdate"), is(Long.valueOf(rand.birthdate.getTime()).toString()));
+		assertThat(write(rand).getDataAsUtf8String().get("birthdate"),
+				is(Long.valueOf(rand.birthdate.getTime()).toString()));
 	}
 
 	@Test
@@ -433,10 +444,134 @@ public class MappingRedisConverterUnitTests {
 
 		Date date = cal.getTime();
 
-		Person target = converter.read(Person.class,
-				RedisData.newRedisDataFromStringMap(Collections.singletonMap("birthdate", Long.valueOf(date.getTime()).toString())));
+		Person target = converter.read(Person.class, RedisData.newRedisDataFromStringMap(Collections.singletonMap(
+				"birthdate", Long.valueOf(date.getTime()).toString())));
 
 		assertThat(target.birthdate, is(date));
+	}
+
+	@Test
+	public void writeSingleReferenceOnRootCorrectly() {
+
+		Location location = new Location();
+		location.id = "1";
+		location.name = "tar valon";
+
+		rand.location = location;
+
+		RedisData target = write(rand);
+
+		assertThat(target.getDataAsUtf8String().get("location"), is("locations:1"));
+		assertThat(target.getDataAsUtf8String().containsKey("location.id"), is(false));
+		assertThat(target.getDataAsUtf8String().containsKey("location.name"), is(false));
+	}
+
+	@Test
+	public void readLoadsReferenceDataOnRootCorrectly() {
+
+		Location location = new Location();
+		location.id = "1";
+		location.name = "tar valon";
+
+		when(resolverMock.<Location> resolveReference(eq("1"), eq("locations"), eq(Location.class))).thenReturn(location);
+
+		Map<String, String> map = new LinkedHashMap<String, String>();
+		map.put("location", "locations:1");
+
+		Person target = converter.read(Person.class, RedisData.newRedisDataFromStringMap(map));
+
+		assertThat(target.location, is(location));
+	}
+
+	@Test
+	public void writeSingleReferenceOnNestedElementCorrectly() {
+
+		Location location = new Location();
+		location.id = "1";
+		location.name = "tar valon";
+
+		Person egwene = new Person();
+		egwene.location = location;
+
+		rand.coworkers = Collections.singletonList(egwene);
+
+		RedisData target = write(rand);
+
+		assertThat(target.getDataAsUtf8String().get("coworkers.[0].location"), is("locations:1"));
+		assertThat(target.getDataAsUtf8String().containsKey("coworkers.[0].location.id"), is(false));
+		assertThat(target.getDataAsUtf8String().containsKey("coworkers.[0].location.name"), is(false));
+	}
+
+	@Test
+	public void readLoadsReferenceDataOnNestedElementCorrectly() {
+
+		Location location = new Location();
+		location.id = "1";
+		location.name = "tar valon";
+
+		when(resolverMock.<Location> resolveReference(eq("1"), eq("locations"), eq(Location.class))).thenReturn(location);
+
+		Map<String, String> map = new LinkedHashMap<String, String>();
+		map.put("coworkers.[0].location", "locations:1");
+
+		Person target = converter.read(Person.class, RedisData.newRedisDataFromStringMap(map));
+
+		assertThat(target.coworkers.get(0).location, is(location));
+	}
+
+	@Test
+	public void writeListOfReferencesOnRootCorrectly() {
+
+		Location tarValon = new Location();
+		tarValon.id = "1";
+		tarValon.name = "tar valon";
+
+		Location falme = new Location();
+		falme.id = "2";
+		falme.name = "falme";
+
+		Location tear = new Location();
+		tear.id = "3";
+		tear.name = "city of tear";
+
+		rand.visited = Arrays.asList(tarValon, falme, tear);
+
+		RedisData target = write(rand);
+
+		assertThat(target.getDataAsUtf8String().get("visited.[0]"), is("locations:1"));
+		assertThat(target.getDataAsUtf8String().get("visited.[1]"), is("locations:2"));
+		assertThat(target.getDataAsUtf8String().get("visited.[2]"), is("locations:3"));
+	}
+
+	@Test
+	public void readLoadsListOfReferencesOnRootCorrectly() {
+
+		Location tarValon = new Location();
+		tarValon.id = "1";
+		tarValon.name = "tar valon";
+
+		Location falme = new Location();
+		falme.id = "2";
+		falme.name = "falme";
+
+		Location tear = new Location();
+		tear.id = "3";
+		tear.name = "city of tear";
+
+		when(resolverMock.<Location> resolveReference(eq("1"), eq("locations"), eq(Location.class))).thenReturn(tarValon);
+		when(resolverMock.<Location> resolveReference(eq("2"), eq("locations"), eq(Location.class))).thenReturn(falme);
+		when(resolverMock.<Location> resolveReference(eq("3"), eq("locations"), eq(Location.class))).thenReturn(tear);
+
+		Map<String, String> map = new LinkedHashMap<String, String>();
+		map.put("visited.[0]", "locations:1");
+		map.put("visited.[1]", "locations:2");
+		map.put("visited.[2]", "locations:3");
+
+		Person target = converter.read(Person.class, RedisData.newRedisDataFromStringMap(map));
+
+		assertThat(target.visited.get(0), is(tarValon));
+		assertThat(target.visited.get(1), is(falme));
+		assertThat(target.visited.get(2), is(tear));
 	}
 
 	private RedisData write(Object source) {
@@ -463,6 +598,9 @@ public class MappingRedisConverterUnitTests {
 
 		Map<String, String> physicalAttributes;
 		Map<String, Person> relatives;
+
+		@Reference Location location;
+		@Reference List<Location> visited;
 	}
 
 	static class Address {
@@ -482,6 +620,13 @@ public class MappingRedisConverterUnitTests {
 
 	static class TaVeren extends Person {
 
+	}
+
+	@KeySpace("locations")
+	static class Location {
+
+		@Id String id;
+		String name;
 	}
 
 }
